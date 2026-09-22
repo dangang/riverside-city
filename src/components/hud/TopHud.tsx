@@ -26,7 +26,9 @@ export function TopHud({ city }: { city: CityState }) {
   return (
     <header className="top-hud">
       <div className="hud-brand">
-        <span className="hud-city-name">{city.name}</span>
+        <span className="hud-city-name">
+          {city.name === "Untitled" ? "Your City" : city.name}
+        </span>
         <span className="hud-district">Riverside · {percent}% complete</span>
       </div>
       <div className="hud-resources">
