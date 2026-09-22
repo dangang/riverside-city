@@ -1,10 +1,10 @@
 import type { BuildingType, RoomType } from "./types";
 
 export const OFFLINE_CAP_MS = 8 * 60 * 60 * 1000;
-export const STARTING_MONEY = 25_000;
-export const PROMOTE_PARK_COST = 3_000;
-export const TAX_PER_EMPLOYED_PER_SEC = 2.2;
-export const BASE_PASSIVE_PER_SEC = 0.8;
+export const STARTING_MONEY = 18_000;
+export const PROMOTE_PARK_COST = 2_500;
+export const TAX_PER_EMPLOYED_PER_SEC = 4.5;
+export const BASE_PASSIVE_PER_SEC = 1.5;
 
 export type JobDef = { role: string; count: number; salary: number };
 
@@ -13,11 +13,13 @@ export type BuildingDef = {
   name: string;
   short: string;
   category: "housing" | "business" | "civic" | "park";
+  menuGroup: "housing" | "business" | "services" | "leisure";
   maxLevel: number;
   buildCost: number;
   unlockPopulation?: number;
-  capacityPerLevel: number; // housing beds / park visitors flavor
+  capacityPerLevel: number;
   jobs: JobDef[];
+  incomePerMin?: (level: number) => number;
   statBoosts: Partial<{
     happiness: number;
     health: number;
@@ -39,14 +41,15 @@ export const BUILDING_DEFS: Record<BuildingType, BuildingDef> = {
     name: "Starter House",
     short: "House",
     category: "housing",
+    menuGroup: "housing",
     maxLevel: 3,
-    buildCost: 1_200,
-    capacityPerLevel: 2,
+    buildCost: 800,
+    capacityPerLevel: 3,
     jobs: [],
-    statBoosts: { happiness: 2 },
-    upgradeCost: (l) => 800 + l * 600,
-    upgradeMs: (l) => sec(1 + l * 2),
-    benefit: (l) => `Homes for ${2 + l} residents`,
+    statBoosts: { happiness: 3 },
+    upgradeCost: (l) => 500 + l * 400,
+    upgradeMs: (l) => sec(1 + l),
+    benefit: (l) => `Homes for ${3 + l * 2} residents`,
     color: "#e8b86d",
     accent: "#c47a3a",
   },
@@ -55,15 +58,17 @@ export const BUILDING_DEFS: Record<BuildingType, BuildingDef> = {
     name: "Apartments",
     short: "Apt",
     category: "housing",
+    menuGroup: "housing",
     maxLevel: 4,
-    buildCost: 4_500,
-    unlockPopulation: 40,
-    capacityPerLevel: 6,
+    buildCost: 3_200,
+    unlockPopulation: 25,
+    capacityPerLevel: 8,
     jobs: [{ role: "Superintendent", count: 1, salary: 2800 }],
-    statBoosts: { happiness: 3 },
-    upgradeCost: (l) => 2_000 + l * 1_500,
-    upgradeMs: (l) => sec(3 + l * 3),
-    benefit: (l) => `Homes for ${6 + l * 4} residents`,
+    incomePerMin: (l) => 40 + l * 25,
+    statBoosts: { happiness: 4 },
+    upgradeCost: (l) => 1_400 + l * 1_000,
+    upgradeMs: (l) => sec(2 + l * 2),
+    benefit: (l) => `Homes for ${8 + l * 4} residents`,
     color: "#7eb8da",
     accent: "#3d7ea6",
   },
@@ -72,17 +77,19 @@ export const BUILDING_DEFS: Record<BuildingType, BuildingDef> = {
     name: "Grocery Store",
     short: "Grocery",
     category: "business",
+    menuGroup: "business",
     maxLevel: 4,
-    buildCost: 2_800,
+    buildCost: 1_600,
     capacityPerLevel: 0,
     jobs: [
       { role: "Manager", count: 1, salary: 4200 },
       { role: "Worker", count: 4, salary: 2600 },
     ],
-    statBoosts: { happiness: 4, health: 2 },
-    upgradeCost: (l) => 1_500 + l * 1_200,
-    upgradeMs: (l) => sec(2 + l * 3),
-    benefit: (l) => `+${5 + l * 3} happiness · ${5 + l} jobs`,
+    incomePerMin: (l) => 180 + l * 90,
+    statBoosts: { happiness: 5, health: 2 },
+    upgradeCost: (l) => 900 + l * 700,
+    upgradeMs: (l) => sec(1.5 + l * 2),
+    benefit: (l) => `+$${180 + l * 90}/min · ${5 + l} jobs`,
     color: "#6ec29a",
     accent: "#2f8a5c",
   },
@@ -91,17 +98,20 @@ export const BUILDING_DEFS: Record<BuildingType, BuildingDef> = {
     name: "Riverside Gym",
     short: "Gym",
     category: "business",
-    maxLevel: 4,
-    buildCost: 3_200,
+    menuGroup: "business",
+    maxLevel: 3,
+    buildCost: 2_200,
+    unlockPopulation: 8,
     capacityPerLevel: 0,
     jobs: [
       { role: "Manager", count: 1, salary: 4000 },
       { role: "Trainer", count: 3, salary: 3100 },
     ],
-    statBoosts: { health: 8, happiness: 3 },
-    upgradeCost: (l) => 1_800 + l * 1_400,
-    upgradeMs: (l) => sec(3 + l * 3),
-    benefit: (l) => `+${8 + l * 4} health · fitness jobs`,
+    incomePerMin: (l) => 220 + l * 100,
+    statBoosts: { health: 10, happiness: 4 },
+    upgradeCost: (l) => 1_200 + l * 900,
+    upgradeMs: (l) => sec(2 + l * 2),
+    benefit: (l) => `Health +${10 + l * 5} · +$${220 + l * 100}/min`,
     color: "#f0a06a",
     accent: "#c45d2c",
   },
@@ -110,14 +120,17 @@ export const BUILDING_DEFS: Record<BuildingType, BuildingDef> = {
     name: "Riverside School",
     short: "School",
     category: "civic",
+    menuGroup: "services",
     maxLevel: 4,
-    buildCost: 5_000,
-    capacityPerLevel: 20,
+    buildCost: 2_800,
+    unlockPopulation: 12,
+    capacityPerLevel: 25,
     jobs: [{ role: "Teacher", count: 4, salary: 3800 }],
-    statBoosts: { education: 12, happiness: 2 },
-    upgradeCost: (l) => 2_500 + l * 2_000,
-    upgradeMs: (l) => sec(4 + l * 4),
-    benefit: (l) => `Education +${12 + l * 6} · capacity ${20 + l * 15}`,
+    incomePerMin: (l) => 60 + l * 30,
+    statBoosts: { education: 14, happiness: 2 },
+    upgradeCost: (l) => 1_500 + l * 1_200,
+    upgradeMs: (l) => sec(3 + l * 3),
+    benefit: (l) => `Education +${14 + l * 6}`,
     color: "#9bb5e8",
     accent: "#4a6bb5",
   },
@@ -126,18 +139,20 @@ export const BUILDING_DEFS: Record<BuildingType, BuildingDef> = {
     name: "Clinic",
     short: "Clinic",
     category: "civic",
+    menuGroup: "services",
     maxLevel: 4,
-    buildCost: 4_800,
-    unlockPopulation: 50,
+    buildCost: 2_600,
+    unlockPopulation: 20,
     capacityPerLevel: 0,
     jobs: [
       { role: "Doctor", count: 2, salary: 5500 },
       { role: "Nurse", count: 3, salary: 3400 },
     ],
-    statBoosts: { health: 14 },
-    upgradeCost: (l) => 2_400 + l * 1_800,
-    upgradeMs: (l) => sec(4 + l * 4),
-    benefit: (l) => `Health +${14 + l * 5}`,
+    incomePerMin: (l) => 80 + l * 40,
+    statBoosts: { health: 16 },
+    upgradeCost: (l) => 1_400 + l * 1_100,
+    upgradeMs: (l) => sec(3 + l * 3),
+    benefit: (l) => `Health +${16 + l * 5}`,
     color: "#e8a0b8",
     accent: "#b04a6e",
   },
@@ -146,17 +161,20 @@ export const BUILDING_DEFS: Record<BuildingType, BuildingDef> = {
     name: "Police Station",
     short: "Police",
     category: "civic",
+    menuGroup: "services",
     maxLevel: 3,
-    buildCost: 4_200,
+    buildCost: 2_400,
+    unlockPopulation: 15,
     capacityPerLevel: 0,
     jobs: [
       { role: "Officer", count: 3, salary: 3600 },
       { role: "Sergeant", count: 1, salary: 4800 },
     ],
-    statBoosts: { safety: 15 },
-    upgradeCost: (l) => 2_200 + l * 1_600,
-    upgradeMs: (l) => sec(3 + l * 4),
-    benefit: (l) => `Safety +${15 + l * 8} · ${4 + l} units`,
+    incomePerMin: (l) => 40 + l * 20,
+    statBoosts: { safety: 16 },
+    upgradeCost: (l) => 1_300 + l * 1_000,
+    upgradeMs: (l) => sec(2 + l * 3),
+    benefit: (l) => `Safety +${16 + l * 8}`,
     color: "#6a8ec8",
     accent: "#2f4f8a",
   },
@@ -165,17 +183,20 @@ export const BUILDING_DEFS: Record<BuildingType, BuildingDef> = {
     name: "Fire Station",
     short: "Fire",
     category: "civic",
+    menuGroup: "services",
     maxLevel: 3,
-    buildCost: 4_000,
+    buildCost: 2_200,
+    unlockPopulation: 15,
     capacityPerLevel: 0,
     jobs: [
       { role: "Firefighter", count: 4, salary: 3500 },
       { role: "Chief", count: 1, salary: 5000 },
     ],
-    statBoosts: { safety: 10 },
-    upgradeCost: (l) => 2_000 + l * 1_500,
-    upgradeMs: (l) => sec(3 + l * 4),
-    benefit: (l) => `Safety +${10 + l * 6}`,
+    incomePerMin: (l) => 35 + l * 20,
+    statBoosts: { safety: 12 },
+    upgradeCost: (l) => 1_200 + l * 900,
+    upgradeMs: (l) => sec(2 + l * 3),
+    benefit: (l) => `Safety +${12 + l * 6}`,
     color: "#e87868",
     accent: "#b03828",
   },
@@ -184,14 +205,17 @@ export const BUILDING_DEFS: Record<BuildingType, BuildingDef> = {
     name: "Riverside Park",
     short: "Park",
     category: "park",
+    menuGroup: "leisure",
     maxLevel: 3,
-    buildCost: 2_000,
+    buildCost: 1_200,
+    unlockPopulation: 6,
     capacityPerLevel: 0,
     jobs: [{ role: "Gardener", count: 2, salary: 2400 }],
-    statBoosts: { happiness: 10 },
-    upgradeCost: (l) => 1_200 + l * 1_000,
-    upgradeMs: (l) => sec(2 + l * 3),
-    benefit: (l) => `Happiness +${10 + l * 6}`,
+    incomePerMin: (l) => 90 + l * 50,
+    statBoosts: { happiness: 12 },
+    upgradeCost: (l) => 800 + l * 700,
+    upgradeMs: (l) => sec(1.5 + l * 2),
+    benefit: (l) => `Happiness +${12 + l * 6}`,
     color: "#7ecf7a",
     accent: "#3a8f3a",
   },
@@ -240,29 +264,28 @@ export type GoalDef = {
 export const GOAL_DEFS: GoalDef[] = [
   {
     id: "growing_town",
-    title: "Growing Town",
-    description: "Get Riverside settled.",
-    reward: 5_000,
+    title: "Growing Riverside",
+    description: "Get the district settled.",
+    reward: 8_000,
     requirements: [
-      "Reach population 50",
+      "Population 25",
       "Build Grocery Store",
       "Build School",
     ],
     check: ({ population, buildings }) =>
-      population >= 50 &&
+      population >= 25 &&
       buildings.some((b) => b.type === "grocery") &&
       buildings.some((b) => b.type === "school"),
   },
   {
-    id: "healthy_citizens",
-    title: "Healthy Citizens",
-    description: "Keep people well.",
+    id: "fit_city",
+    title: "Fit City",
+    description: "Keep people healthy and active.",
     reward: 6_000,
-    requirements: ["Build Clinic", "Build Gym", "Reach Health 75"],
+    requirements: ["Build Gym", "Health 70", "Gym Level 2"],
     check: ({ buildings, stats }) =>
-      buildings.some((b) => b.type === "clinic") &&
-      buildings.some((b) => b.type === "gym") &&
-      stats.health >= 75,
+      buildings.some((b) => b.type === "gym" && b.level >= 2) &&
+      stats.health >= 70,
   },
   {
     id: "safe_streets",
@@ -272,12 +295,12 @@ export const GOAL_DEFS: GoalDef[] = [
     requirements: [
       "Police Station Level 2",
       "Fire Station Level 2",
-      "Safety 70",
+      "Safety 65",
     ],
     check: ({ buildings, stats }) =>
       buildings.some((b) => b.type === "police" && b.level >= 2) &&
       buildings.some((b) => b.type === "fire" && b.level >= 2) &&
-      stats.safety >= 70,
+      stats.safety >= 65,
   },
 ];
 

@@ -52,6 +52,7 @@ export function createInitialCity(
       education: 40,
       employment: 0,
     },
+    attention: 10,
     buildings: [],
     citizens: [],
     jobs: [],
@@ -79,17 +80,12 @@ export function createInitialCity(
     pendingOffline: null,
     pendingMilestone: null,
     districtCelebrated: false,
-    unlocked: [
-      "starter_house",
-      "grocery",
-      "gym",
-      "school",
-      "police",
-      "fire",
-      "park",
-    ],
+    unlocked: ["starter_house", "grocery"],
     seed,
     tickAt: now,
+    lastIncomePulseAt: now,
+    arrivalNote: null,
+    lastEventOutcome: null,
   };
 }
 
@@ -170,10 +166,13 @@ export function recomputeStats(state: CityState): CityStats {
 export function incomePerSecond(state: CityState): number {
   const employed = state.citizens.filter((c) => c.job).length;
   let rate = BASE_PASSIVE_PER_SEC + employed * TAX_PER_EMPLOYED_PER_SEC;
-  // business level bonus
   for (const b of state.buildings) {
     const def = BUILDING_DEFS[b.type];
-    if (def.category === "business") rate += 1.5 * b.level;
+    if (def.incomePerMin) {
+      rate += def.incomePerMin(b.level) / 60;
+    } else if (def.category === "business") {
+      rate += 1.5 * b.level;
+    }
   }
   if (state.parkPromoUntil && state.parkPromoUntil > state.tickAt) {
     rate *= 1.35;
@@ -200,9 +199,11 @@ export function spawnCitizens(state: CityState, count: number): CityState {
   const next = { ...state, citizens: [...state.citizens] };
   const posts: SocialPost[] = [...state.posts];
   const history: HistoryEntry[] = [...state.history];
+  let arrivalName: string | null = null;
 
   for (let i = 0; i < count; i++) {
-    const isInfluencer = rng() < 0.08 || next.citizens.length === 12;
+    const isInfluencer =
+      rng() < 0.1 || (next.citizens.length >= 5 && !next.citizens.some((c) => c.isInfluencer));
     const c: Citizen = {
       id: uid("cit"),
       name: pickName(rng, used),
@@ -214,16 +215,19 @@ export function spawnCitizens(state: CityState, count: number): CityState {
       happiness: 60 + Math.floor(rng() * 25),
       health: 55 + Math.floor(rng() * 35),
       followers: isInfluencer
-        ? 8_000 + Math.floor(rng() * 90_000)
+        ? 12_000 + Math.floor(rng() * 90_000)
         : Math.floor(rng() * 400),
-      status: isInfluencer ? "Lifestyle influencer" : "New in town",
+      status: isInfluencer ? "Lifestyle influencer" : "Just arrived",
       isInfluencer,
+      niche: isInfluencer ? "Lifestyle / Travel" : undefined,
+      reputation: isInfluencer ? 70 + Math.floor(rng() * 25) : undefined,
     };
+    arrivalName = c.name;
     next.citizens.push(c);
     if (isInfluencer) {
       history.push({
         id: uid("hist"),
-        title: "First influencer moved in",
+        title: "Influencer moved in",
         description: `${c.name} arrived with ${c.followers.toLocaleString()} followers.`,
         createdAt: state.tickAt,
       });
@@ -231,8 +235,11 @@ export function spawnCitizens(state: CityState, count: number): CityState {
         id: uid("post"),
         citizenId: c.id,
         handle: `@${c.name.replace(/\s/g, "")}`,
+        authorName: c.name,
         text: "Just moved to Riverside — cute little district vibes.",
         createdAt: state.tickAt,
+        likes: 40 + Math.floor(rng() * 200),
+        comments: 2 + Math.floor(rng() * 20),
       });
     }
   }
@@ -241,6 +248,13 @@ export function spawnCitizens(state: CityState, count: number): CityState {
   next.posts = posts.slice(0, 40);
   next.history = history;
   next.seed = state.seed + count;
+  next.arrivalNote = arrivalName
+    ? {
+        name: arrivalName,
+        at: state.tickAt,
+        detail: count > 1 ? `+${count} residents` : "moved to Riverside",
+      }
+    : state.arrivalNote;
   return assignHomesAndJobs(next);
 }
 
@@ -363,11 +377,21 @@ export function checkGoalsAndUnlocks(state: CityState): CityState {
     }
   }
 
-  // unlocks
+  // unlocks by progress
   const unlocked = new Set(next.unlocked);
-  if (next.population >= 40) unlocked.add("apartment");
-  if (next.population >= 50 || next.buildings.some((b) => b.type === "gym")) {
-    unlocked.add("clinic");
+  unlocked.add("starter_house");
+  unlocked.add("grocery");
+  if (next.population >= 6) unlocked.add("park");
+  if (next.population >= 8) unlocked.add("gym");
+  if (next.population >= 12) unlocked.add("school");
+  if (next.population >= 15) {
+    unlocked.add("police");
+    unlocked.add("fire");
+  }
+  if (next.population >= 20) unlocked.add("clinic");
+  if (next.population >= 25) unlocked.add("apartment");
+  if (next.goals.find((g) => g.id === "growing_town")?.claimed) {
+    unlocked.add("apartment");
   }
   if (next.population >= 100 && !next.pendingMilestone) {
     const already = next.history.some((h) => h.title === "A Real Town");

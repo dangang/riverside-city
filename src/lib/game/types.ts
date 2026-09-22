@@ -10,7 +10,7 @@ export type BuildingType =
   | "park";
 
 export type RoomType = "bedroom" | "bathroom" | "kitchen" | "living_room";
-export type RoomTier = 0 | 1 | 2 | 3; // none / basic / improved / modern(=MAX)
+export type RoomTier = 0 | 1 | 2 | 3;
 
 export type CityStats = {
   happiness: number;
@@ -38,6 +38,8 @@ export type Building = {
   upgradeCompletesAt: number | null;
   roomBuildCompletesAt: number | null;
   buildingRoom: RoomType | null;
+  justBuiltAt?: number;
+  justLeveledAt?: number;
 };
 
 export type Citizen = {
@@ -53,6 +55,8 @@ export type Citizen = {
   followers: number;
   status: string;
   isInfluencer: boolean;
+  niche?: string;
+  reputation?: number;
 };
 
 export type GameEvent = {
@@ -61,17 +65,23 @@ export type GameEvent = {
   title: string;
   body: string;
   status: "active" | "resolved";
-  choices?: { id: string; label: string }[];
+  urgency: "low" | "medium" | "high";
+  locationLabel?: string;
+  choices?: { id: string; label: string; hint?: string }[];
   createdAt: number;
   payload?: Record<string, unknown>;
+  outcomeText?: string;
 };
 
 export type SocialPost = {
   id: string;
   citizenId: string | null;
   handle: string;
+  authorName: string;
   text: string;
   createdAt: number;
+  likes: number;
+  comments: number;
 };
 
 export type HistoryEntry = {
@@ -110,12 +120,19 @@ export type TutorialStep =
   | "max_something"
   | "done";
 
+export type ArrivalNote = {
+  name: string;
+  at: number;
+  detail?: string;
+};
+
 export type CityState = {
   id: string;
   name: string;
   money: number;
   population: number;
   stats: CityStats;
+  attention: number;
   buildings: Building[];
   citizens: Citizen[];
   jobs: JobSlot[];
@@ -133,6 +150,9 @@ export type CityState = {
   unlocked: BuildingType[];
   seed: number;
   tickAt: number;
+  lastIncomePulseAt: number;
+  arrivalNote: ArrivalNote | null;
+  lastEventOutcome: string | null;
 };
 
 export type GameCommand =
@@ -154,4 +174,11 @@ export type CommandResult = {
   error?: string;
   state: CityState;
   toast?: string;
+  fx?: {
+    kind: "build" | "upgrade" | "max" | "money" | "arrive" | "reward" | "alert";
+    buildingId?: string;
+    amount?: number;
+    plotX?: number;
+    plotY?: number;
+  };
 };

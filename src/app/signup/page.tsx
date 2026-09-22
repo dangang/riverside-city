@@ -4,12 +4,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/client";
+import { useGameStore } from "@/lib/game/store";
+import { importGuestCity } from "@/app/actions/game";
 
 export default function SignupPage() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const configured = isSupabaseConfigured();
+  const exportGuestCity = useGameStore((s) => s.exportGuestCity);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -28,12 +31,17 @@ export default function SignupPage() {
       setError("Supabase client unavailable");
       return;
     }
+    const guest = exportGuestCity();
     const { error: err } = await supabase.auth.signUp({ email, password });
-    setLoading(false);
     if (err) {
+      setLoading(false);
       setError(err.message);
       return;
     }
+    if (guest && guest.buildings.length > 0) {
+      await importGuestCity(guest);
+    }
+    setLoading(false);
     router.push("/play");
     router.refresh();
   }
@@ -42,11 +50,14 @@ export default function SignupPage() {
     <main className="auth-page">
       <div className="auth-card">
         <h1>Sign up</h1>
-        <p>Create an account so your city persists across devices.</p>
+        <p>
+          Create an account so your city persists. If you already played as a
+          guest, we&apos;ll carry that city over when possible.
+        </p>
         {!configured && (
           <p className="muted">
-            Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to enable
-            auth. Guest play works without it.
+            Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to
+            enable auth. Guest play works without it.
           </p>
         )}
         <form onSubmit={onSubmit}>

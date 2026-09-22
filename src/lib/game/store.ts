@@ -1,16 +1,43 @@
 import { create } from "zustand";
 import { applyCommand, prepareSession } from "./commands";
 import { createInitialCity } from "./engine";
-import type { CityState, GameCommand } from "./types";
+import type { CityState, CommandResult, GameCommand } from "./types";
 
-const STORAGE_KEY = "riverside_city_v1";
+const STORAGE_KEY = "riverside_city_v2";
+const LEGACY_KEY = "riverside_city_v1";
+
+function migrate(raw: CityState): CityState {
+  const base = createInitialCity(raw.name === "Untitled" ? "Untitled" : raw.name, raw.seed);
+  return {
+    ...base,
+    ...raw,
+    attention: raw.attention ?? 10,
+    lastIncomePulseAt: raw.lastIncomePulseAt ?? raw.tickAt ?? Date.now(),
+    arrivalNote: raw.arrivalNote ?? null,
+    lastEventOutcome: raw.lastEventOutcome ?? null,
+    posts: (raw.posts ?? []).map((p) => ({
+      ...p,
+      authorName: p.authorName ?? p.handle?.replace("@", "") ?? "Citizen",
+      likes: p.likes ?? 10,
+      comments: p.comments ?? 1,
+    })),
+    events: (raw.events ?? []).map((e) => ({
+      ...e,
+      urgency: e.urgency ?? "medium",
+    })),
+    unlocked: raw.unlocked?.length
+      ? raw.unlocked
+      : base.unlocked,
+  };
+}
 
 function loadLocal(): CityState | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw =
+      localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_KEY);
     if (!raw) return null;
-    return JSON.parse(raw) as CityState;
+    return migrate(JSON.parse(raw) as CityState);
   } catch {
     return null;
   }
@@ -33,12 +60,13 @@ type GameStore = {
   hydrate: () => void;
   newGuestCity: () => void;
   setCity: (city: CityState, mode?: "guest" | "cloud") => void;
-  dispatch: (cmd: GameCommand) => string | undefined;
+  dispatch: (cmd: GameCommand) => CommandResult | null;
   selectBuilding: (id: string | null) => void;
   selectCitizen: (id: string | null) => void;
   setBuildMode: (v: boolean) => void;
   setPanel: (p: GameStore["panel"]) => void;
   clearToast: () => void;
+  exportGuestCity: () => CityState | null;
 };
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -50,6 +78,18 @@ export const useGameStore = create<GameStore>((set, get) => ({
   buildMode: false,
   panel: "none",
   hydrated: false,
+
+  hydrate: () => {
+    const now = Date.now();
+    let city = loadLocal();
+    if (!city) {
+      city = createInitialCity();
+    } else {
+      city = prepareSession(city, now);
+    }
+    set({ city, hydrated: true, mode: "guest" });
+    saveLocal(city);
+  },
 
   newGuestCity: () => {
     const city = createInitialCity();
@@ -64,37 +104,25 @@ export const useGameStore = create<GameStore>((set, get) => ({
     saveLocal(city);
   },
 
-  hydrate: () => {
-    const now = Date.now();
-    let city = loadLocal();
-    if (!city) {
-      city = createInitialCity();
-    } else {
-      city = prepareSession(city, now);
-    }
-    set({ city, hydrated: true, mode: "guest" });
-    saveLocal(city);
-  },
-
   setCity: (city, mode = "guest") => {
-    set({ city, mode, hydrated: true });
-    if (mode === "guest") saveLocal(city);
+    set({ city: migrate(city), mode, hydrated: true });
+    if (mode === "guest") saveLocal(migrate(city));
   },
 
   dispatch: (cmd) => {
     const { city } = get();
-    if (!city) return "No city";
+    if (!city) return null;
     const result = applyCommand(city, cmd);
     if (!result.ok) {
       set({ toast: result.error ?? "Failed" });
-      return result.error;
+      return result;
     }
     set({
       city: result.state,
       toast: result.toast ?? null,
     });
     if (get().mode === "guest") saveLocal(result.state);
-    return undefined;
+    return result;
   },
 
   selectBuilding: (id) =>
@@ -104,4 +132,5 @@ export const useGameStore = create<GameStore>((set, get) => ({
   setBuildMode: (v) => set({ buildMode: v }),
   setPanel: (p) => set({ panel: p }),
   clearToast: () => set({ toast: null }),
+  exportGuestCity: () => get().city,
 }));

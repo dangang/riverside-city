@@ -2,6 +2,8 @@
 
 import { formatDuration, formatMoney } from "@/lib/utils";
 import type { CityState, GameEvent, Milestone } from "@/lib/game/types";
+import { cn } from "@/lib/utils";
+import { sfx } from "@/lib/audio/sfx";
 
 export function OfflineModal({
   city,
@@ -24,7 +26,14 @@ export function OfflineModal({
             <li key={b}>{b}</li>
           ))}
         </ul>
-        <button type="button" className="game-btn primary full" onClick={onCollect}>
+        <button
+          type="button"
+          className="game-btn primary full"
+          onClick={() => {
+            sfx.money();
+            onCollect();
+          }}
+        >
           Collect
         </button>
       </div>
@@ -55,7 +64,14 @@ export function MilestoneModal({
           </>
         )}
         <div className="modal-actions">
-          <button type="button" className="game-btn primary" onClick={onContinue}>
+          <button
+            type="button"
+            className="game-btn primary"
+            onClick={() => {
+              sfx.reward();
+              onContinue();
+            }}
+          >
             Continue
           </button>
           <button type="button" className="game-btn" onClick={onContinue}>
@@ -82,7 +98,10 @@ export function NameCityModal({
             e.preventDefault();
             const fd = new FormData(e.currentTarget);
             const name = String(fd.get("name") || "").trim();
-            if (name.length >= 2) onSubmit(name);
+            if (name.length >= 2) {
+              sfx.reward();
+              onSubmit(name);
+            }
           }}
         >
           <input
@@ -111,8 +130,16 @@ export function EventBanner({
 }) {
   if (event.status !== "active") return null;
   return (
-    <div className="event-banner">
+    <div className={cn("event-banner", `urgency-${event.urgency ?? "medium"}`)}>
       <div>
+        <div className="event-meta">
+          <span className={cn("urgency-pill", event.urgency ?? "medium")}>
+            {(event.urgency ?? "medium").toUpperCase()}
+          </span>
+          {event.locationLabel && (
+            <span className="muted">{event.locationLabel}</span>
+          )}
+        </div>
         <strong>{event.title}</strong>
         <p>{event.body}</p>
       </div>
@@ -122,9 +149,14 @@ export function EventBanner({
             key={c.id}
             type="button"
             className="game-btn primary"
-            onClick={() => onChoose(c.id)}
+            title={c.hint}
+            onClick={() => {
+              sfx.click();
+              onChoose(c.id);
+            }}
           >
             {c.label}
+            {c.hint && <small>{c.hint}</small>}
           </button>
         ))}
       </div>
@@ -136,6 +168,20 @@ export function Toast({ message, onDone }: { message: string; onDone: () => void
   return (
     <div className="toast" onAnimationEnd={onDone} role="status">
       {message}
+    </div>
+  );
+}
+
+export function OutcomeToast({
+  text,
+  onDone,
+}: {
+  text: string;
+  onDone: () => void;
+}) {
+  return (
+    <div className="outcome-toast" onAnimationEnd={onDone} role="status">
+      {text}
     </div>
   );
 }

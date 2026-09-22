@@ -19,6 +19,7 @@ import {
   uid,
   housingCapacity,
 } from "./engine";
+import { maybeReactToState } from "./feed";
 import { maybeSpawnEvent, resolveEventChoice } from "./events";
 import type {
   Building,
@@ -32,8 +33,12 @@ function fail(state: CityState, error: string): CommandResult {
   return { ok: false, error, state };
 }
 
-function ok(state: CityState, toast?: string): CommandResult {
-  return { ok: true, state, toast };
+function ok(
+  state: CityState,
+  toast?: string,
+  fx?: CommandResult["fx"]
+): CommandResult {
+  return { ok: true, state, toast, fx };
 }
 
 function advanceTutorial(state: CityState): CityState {
@@ -130,8 +135,10 @@ export function applyCommand(
         upgradeCompletesAt: null,
         roomBuildCompletesAt: null,
         buildingRoom: null,
+        justBuiltAt: state.tickAt,
       };
 
+      const prev = state;
       let next: CityState = {
         ...state,
         money: state.money - def.buildCost,
@@ -146,26 +153,9 @@ export function applyCommand(
           },
           ...state.history,
         ],
-        posts: [
-          {
-            id: uid("post"),
-            citizenId: null,
-            handle: "@RiversideDaily",
-            text:
-              def.type === "grocery"
-                ? "Finally — a grocery store!"
-                : def.type === "gym"
-                  ? "New gym is actually great."
-                  : def.type === "school"
-                    ? "School bells are ringing."
-                    : `New ${def.short} just opened.`,
-            createdAt: state.tickAt,
-          },
-          ...state.posts,
-        ].slice(0, 40),
+        posts: state.posts,
       };
 
-      // housing brings citizens
       if (def.category === "housing") {
         const room = housingCapacity(next.buildings) - next.citizens.length;
         const spawn = Math.min(room, def.capacityPerLevel);
@@ -174,8 +164,16 @@ export function applyCommand(
         next = assignHomesAndJobs(next);
       }
 
-      next = advanceTutorial(checkGoalsAndUnlocks(next));
-      return ok(next, `Built ${def.name}`);
+      next = advanceTutorial(
+        checkGoalsAndUnlocks(maybeReactToState(prev, next))
+      );
+      return ok(next, `Built ${def.name}`, {
+        kind: "build",
+        buildingId: building.id,
+        plotX: cmd.plotX,
+        plotY: cmd.plotY,
+        amount: -def.buildCost,
+      });
     }
 
     case "upgrade": {
@@ -197,7 +195,10 @@ export function applyCommand(
             : b
         ),
       };
-      return ok(advanceTutorial(next), `Upgrading ${def.name}…`);
+      return ok(advanceTutorial(next), `Upgrading ${def.name}…`, {
+        kind: "upgrade",
+        buildingId: building.id,
+      });
     }
 
     case "build_room": {
@@ -276,14 +277,19 @@ export function applyCommand(
       if (!park) return fail(state, "Build Riverside Park first");
       if (state.money < PROMOTE_PARK_COST)
         return fail(state, "Not enough money");
+      if (state.parkPromoUntil && state.parkPromoUntil > state.tickAt) {
+        return fail(state, "A campaign is already running");
+      }
       const influencer =
         state.citizens.find((c) => c.isInfluencer) ?? state.citizens[0];
       const handle = influencer
         ? `@${influencer.name.replace(/\s/g, "")}`
         : "@LenaKai";
+      const authorName = influencer?.name ?? "Lena Kai";
       const next: CityState = {
         ...state,
         money: state.money - PROMOTE_PARK_COST,
+        attention: Math.min(100, (state.attention ?? 10) + 5),
         parkPromoUntil: state.tickAt + 3 * 60 * 1000,
         stats: {
           ...state.stats,
@@ -294,33 +300,29 @@ export function applyCommand(
             id: uid("post"),
             citizenId: influencer?.id ?? null,
             handle,
+            authorName,
             text: "Riverside Park is actually such a nice place to spend the afternoon.",
             createdAt: state.tickAt,
+            likes: 120 + Math.floor(Math.random() * 400),
+            comments: 10 + Math.floor(Math.random() * 40),
           },
           ...state.posts,
         ].slice(0, 40),
         history: [
           {
             id: uid("hist"),
-            title: "Park promotion",
-            description: `${handle} posted about Riverside Park.`,
+            title: "Park campaign",
+            description: `${authorName} promoted Riverside Park.`,
             createdAt: state.tickAt,
           },
           ...state.history,
         ],
-        events: [
-          {
-            id: uid("evt"),
-            type: "promo",
-            title: "Park buzz",
-            body: "Visitors are flocking to Riverside Park for a short boost.",
-            status: "resolved",
-            createdAt: state.tickAt,
-          },
-          ...state.events,
-        ],
       };
-      return ok(checkGoalsAndUnlocks(next), "Promotion live!");
+      return ok(checkGoalsAndUnlocks(next), "Campaign live!", {
+        kind: "reward",
+        buildingId: park.id,
+        amount: -PROMOTE_PARK_COST,
+      });
     }
 
     case "claim_goal": {
@@ -346,7 +348,10 @@ export function applyCommand(
           ...state.history,
         ],
       };
-      return ok(next, `+$${reward.toLocaleString()}`);
+      return ok(next, `+$${reward.toLocaleString()}`, {
+        kind: "reward",
+        amount: reward,
+      });
     }
 
     case "dismiss_milestone": {
@@ -382,7 +387,12 @@ export function tickCity(state: CityState, now: number): CityState {
       buildingsChanged = true;
       const def = BUILDING_DEFS[b.type];
       const newLevel = Math.min(def.maxLevel, b.level + 1);
-      building = { ...b, level: newLevel, upgradeCompletesAt: null };
+      building = {
+        ...b,
+        level: newLevel,
+        upgradeCompletesAt: null,
+        justLeveledAt: now,
+      };
       next.history = [
         {
           id: uid("hist"),
@@ -400,9 +410,12 @@ export function tickCity(state: CityState, now: number): CityState {
           {
             id: uid("post"),
             citizenId: null,
-            handle: "@RiversideDaily",
+            handle: "@RiversidePulse",
+            authorName: "Riverside Pulse",
             text: `${def.name} looks brand new — maxed out!`,
             createdAt: now,
+            likes: 50,
+            comments: 6,
           },
           ...next.posts,
         ].slice(0, 40);
@@ -451,10 +464,14 @@ export function tickCity(state: CityState, now: number): CityState {
     next = assignHomesAndJobs(next);
   }
 
-  // income
+  // income — pulse float every ~8s
   const dt = Math.max(0, Math.min(5, (now - state.tickAt) / 1000));
   if (dt > 0 && state.tickAt > 0) {
-    next.money = next.money + incomePerSecond(next) * dt;
+    const earned = incomePerSecond(next) * dt;
+    next.money = next.money + earned;
+    if (now - (state.lastIncomePulseAt || 0) > 8000 && earned > 0) {
+      next.lastIncomePulseAt = now;
+    }
   }
 
   // expire promo

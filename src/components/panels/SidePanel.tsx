@@ -9,12 +9,15 @@ import {
   ROOM_TIER_LABELS,
   DISTRICT_REQUIREMENTS,
 } from "@/lib/game/defs";
-import { districtCompletion } from "@/lib/game/engine";
-import type { Building, Citizen, CityState, RoomType } from "@/lib/game/types";
-import { formatMoney, formatDuration, formatNumber } from "@/lib/utils";
+import { districtCompletion, incomePerSecond } from "@/lib/game/engine";
+import { formatFollowers } from "@/lib/game/avatar";
+import type { Building, Citizen, CityState, GameCommand, RoomType } from "@/lib/game/types";
+import { formatMoney, formatDuration } from "@/lib/utils";
 import { Megaphone, X } from "lucide-react";
+import { CitizenAvatar } from "@/components/citizens/CitizenAvatar";
+import { sfx } from "@/lib/audio/sfx";
 
-type Dispatch = (cmd: Parameters<typeof import("@/lib/game/commands").applyCommand>[1]) => void;
+type Dispatch = (cmd: GameCommand) => void;
 
 export function SidePanel({
   city,
@@ -69,7 +72,10 @@ export function SidePanel({
                   <button
                     type="button"
                     className="game-btn primary"
-                    onClick={() => onDispatch({ type: "claim_goal", goalId: g.id })}
+                    onClick={() => {
+                      sfx.reward();
+                      onDispatch({ type: "claim_goal", goalId: g.id });
+                    }}
                   >
                     Claim {formatMoney(g.reward)}
                   </button>
@@ -100,27 +106,76 @@ export function SidePanel({
   }
 
   if (panel === "feed") {
+    const influencer = city.citizens.find((c) => c.isInfluencer);
+    const park = city.buildings.find((b) => b.type === "park");
+    const campaignActive = !!(
+      city.parkPromoUntil && city.parkPromoUntil > city.tickAt
+    );
     return (
       <aside className="side-panel">
-        <PanelHeader title="Social Feed" onClose={onClose} />
+        <PanelHeader title="Pulse" onClose={onClose} />
         <div className="panel-scroll">
-          {city.buildings.some((b) => b.type === "park") && (
-            <button
-              type="button"
-              className="game-btn primary full"
-              onClick={() => onDispatch({ type: "promote_park" })}
-            >
-              <Megaphone size={16} /> Promote Riverside Park ({formatMoney(PROMOTE_PARK_COST)})
-            </button>
+          {influencer && park && (
+            <div className="influencer-card">
+              <div className="influencer-head">
+                <CitizenAvatar id={influencer.id} name={influencer.name} size={44} />
+                <div>
+                  <strong>{influencer.name}</strong>
+                  <p className="muted">
+                    {influencer.niche ?? "Lifestyle / Travel"} ·{" "}
+                    {formatFollowers(influencer.followers)} followers
+                  </p>
+                  <p className="muted">
+                    Reputation: {influencer.reputation ?? 80}
+                  </p>
+                </div>
+              </div>
+              <div className="campaign-box">
+                <strong>City Campaign</strong>
+                <p>Promote Riverside Park</p>
+                <ul className="req-list">
+                  <li>Visitors +20%</li>
+                  <li>Park income +15%</li>
+                  <li>City Attention +5</li>
+                </ul>
+                <p className="muted">Cost {formatMoney(PROMOTE_PARK_COST)}</p>
+                <button
+                  type="button"
+                  className="game-btn primary full"
+                  disabled={campaignActive}
+                  onClick={() => {
+                    sfx.click();
+                    onDispatch({ type: "promote_park" });
+                  }}
+                >
+                  <Megaphone size={16} />
+                  {campaignActive ? "Campaign running…" : "Offer Campaign"}
+                </button>
+              </div>
+            </div>
           )}
           {city.posts.map((p) => (
             <div key={p.id} className="feed-post">
-              <strong>{p.handle}</strong>
+              <div className="feed-head">
+                {p.citizenId ? (
+                  <CitizenAvatar
+                    id={p.citizenId}
+                    name={p.authorName || p.handle}
+                    size={28}
+                  />
+                ) : (
+                  <div className="pulse-dot" />
+                )}
+                <strong>{p.authorName || p.handle}</strong>
+              </div>
               <p>{p.text}</p>
+              <small className="muted">
+                ♥ {p.likes ?? 0} · 💬 {p.comments ?? 0}
+              </small>
             </div>
           ))}
           {city.posts.length === 0 && (
-            <p className="muted">Citizens will post as the city grows.</p>
+            <p className="muted">Citizens will react as the city grows.</p>
           )}
         </div>
       </aside>
@@ -133,14 +188,17 @@ export function SidePanel({
         <PanelHeader title="Citizens" onClose={onClose} />
         <div className="panel-scroll">
           {city.citizens.map((c) => (
-            <div key={c.id} className="citizen-row">
-              <strong>
-                {c.name}
-                {c.isInfluencer ? " · ✦" : ""}
-              </strong>
-              <span>
-                {c.job ?? "Unemployed"} · {formatMoney(c.income)}/mo
-              </span>
+            <div key={c.id} className="citizen-row with-avatar">
+              <CitizenAvatar id={c.id} name={c.name} size={36} />
+              <div>
+                <strong>
+                  {c.name}
+                  {c.isInfluencer ? " · ✦" : ""}
+                </strong>
+                <span>
+                  {c.job ?? "Unemployed"} · {formatMoney(c.income)}/mo
+                </span>
+              </div>
             </div>
           ))}
           {city.citizens.length === 0 && (
@@ -158,21 +216,42 @@ export function SidePanel({
         <PanelHeader title={citizen.name} onClose={onClose} />
         <div className="panel-scroll">
           <div className="citizen-profile">
-            <p>Age {citizen.age}</p>
-            <p>Job: {citizen.job ?? "Unemployed"}</p>
+            <CitizenAvatar id={citizen.id} name={citizen.name} size={64} />
+            <p className="muted">Age {citizen.age}</p>
+            <p>
+              <strong>{citizen.job ?? "Unemployed"}</strong>
+              {citizen.job && home ? "" : ""}
+            </p>
+            {citizen.job && (
+              <p className="muted">
+                at{" "}
+                {city.buildings.find((b) =>
+                  city.jobs.some(
+                    (j) => j.citizenId === citizen.id && j.buildingId === b.id
+                  )
+                )
+                  ? BUILDING_DEFS[
+                      city.buildings.find((b) =>
+                        city.jobs.some(
+                          (j) =>
+                            j.citizenId === citizen.id && j.buildingId === b.id
+                        )
+                      )!.type
+                    ].name
+                  : "work"}
+              </p>
+            )}
             <p>Income: {formatMoney(citizen.income)}/month</p>
             <p>
               Home:{" "}
-              {home
-                ? BUILDING_DEFS[home.type].name
-                : "Looking for housing"}
+              {home ? BUILDING_DEFS[home.type].name : "Looking for housing"}
             </p>
-            <p>Happiness: {citizen.happiness}</p>
-            <p>Health: {citizen.health}</p>
+            <p>Happiness: {citizen.happiness}%</p>
+            <p>Health: {citizen.health}%</p>
             {citizen.followers > 0 && (
-              <p>Followers: {formatNumber(citizen.followers)}</p>
+              <p>Followers: {formatFollowers(citizen.followers)}</p>
             )}
-            <p className="status-line">{citizen.status}</p>
+            <p className="status-line">“{citizen.status}”</p>
           </div>
         </div>
       </aside>
@@ -187,34 +266,80 @@ export function SidePanel({
       : 0;
     const jobs = city.jobs.filter((j) => j.buildingId === building.id);
     const filled = jobs.filter((j) => j.citizenId).length;
+    const residents = city.citizens.filter(
+      (c) => c.homeBuildingId === building.id
+    ).length;
+    const incomeMin = def.incomePerMin?.(building.level) ?? 0;
+    const share = Math.round(
+      (incomePerSecond(city) * 60) /
+        Math.max(1, city.buildings.filter((b) => BUILDING_DEFS[b.type].incomePerMin).length)
+    );
 
     return (
       <aside className="side-panel">
         <PanelHeader title={def.name} onClose={onClose} />
         <div className="panel-scroll">
-          <p className="muted">
-            Level {building.level}/{def.maxLevel}
+          <p className="level-line">
+            Level {building.level} / {def.maxLevel}
             {maxed ? " · MAX" : ""}
           </p>
-          <p>{def.benefit(building.level)}</p>
-          {jobs.length > 0 && (
+          {def.category === "housing" ? (
             <p>
-              Jobs: {filled}/{jobs.length}
+              Residents {residents}/
+              {def.capacityPerLevel +
+                (building.level - 1) *
+                  Math.max(1, Math.floor(def.capacityPerLevel / 2))}
             </p>
+          ) : (
+            <>
+              {jobs.length > 0 && (
+                <p>
+                  Employees: {filled}/{jobs.length}
+                </p>
+              )}
+              {def.statBoosts.health ? (
+                <p>
+                  Health contribution: +
+                  {Math.round(def.statBoosts.health * (1 + (building.level - 1) * 0.35))}
+                </p>
+              ) : null}
+              {(incomeMin > 0 || share > 0) && (
+                <p>Income: +{formatMoney(incomeMin || share)}/min</p>
+              )}
+            </>
           )}
+          <p className="muted">{def.benefit(building.level)}</p>
+
           {upgrading > 0 ? (
-            <p className="upgrade-timer">Upgrading… {formatDuration(upgrading)}</p>
+            <div className="upgrade-timer-block">
+              <p className="upgrade-timer">Upgrading… {formatDuration(upgrading)}</p>
+              <div className="panel-progress">
+                <i
+                  style={{
+                    width: `${Math.max(
+                      5,
+                      100 -
+                        (upgrading / Math.max(1, def.upgradeMs(building.level))) *
+                          100
+                    )}%`,
+                  }}
+                />
+              </div>
+            </div>
           ) : (
             !maxed && (
               <button
                 type="button"
                 className="game-btn primary full"
-                onClick={() =>
-                  onDispatch({ type: "upgrade", buildingId: building.id })
-                }
+                onClick={() => {
+                  sfx.upgradeStart();
+                  onDispatch({ type: "upgrade", buildingId: building.id });
+                }}
               >
-                Upgrade · {formatMoney(def.upgradeCost(building.level))} ·{" "}
-                {formatDuration(def.upgradeMs(building.level))}
+                Upgrade – {formatMoney(def.upgradeCost(building.level))}
+                <small>
+                  {formatDuration(def.upgradeMs(building.level))}
+                </small>
               </button>
             )
           )}
@@ -262,6 +387,7 @@ function RoomRow({
     <div className="room-row">
       <span>
         {ROOM_LABELS[room]} · {ROOM_TIER_LABELS[tier]}
+        {tier >= 3 ? " MAX" : ""}
       </span>
       {busy > 0 ? (
         <em>{formatDuration(busy)}</em>
