@@ -68,6 +68,11 @@ export function GameShell({
   } = useGameStore();
 
   const fx = useFxStore();
+  const dayMode = useFxStore((s) => s.dayMode);
+  const muted = useFxStore((s) => s.muted);
+  const volume = useFxStore((s) => s.volume);
+  const constructingId = useFxStore((s) => s.constructingId);
+  const celebratingMaxId = useFxStore((s) => s.celebratingMaxId);
   const [pendingType, setPendingType] = useState<BuildingType | null>(
     "starter_house"
   );
@@ -80,7 +85,7 @@ export function GameShell({
   const prevLevels = useRef<Record<string, number>>({});
   const [, startTransition] = useTransition();
   const syncCounter = useRef(0);
-  const phase = resolveDayPhase(fx.dayMode);
+  const phase = resolveDayPhase(dayMode);
   const night = phase === "night" || phase === "evening";
 
   useEffect(() => {
@@ -92,9 +97,9 @@ export function GameShell({
   }, [hydrate, initialCloudState, setCity]);
 
   useEffect(() => {
-    setAudioMuted(fx.muted);
-    setAudioVolume(fx.volume);
-  }, [fx.muted, fx.volume]);
+    setAudioMuted(muted);
+    setAudioVolume(volume);
+  }, [muted, volume]);
 
   useEffect(() => {
     if (!city) return;
@@ -165,7 +170,7 @@ export function GameShell({
       }
     }, 500);
     return () => clearInterval(id);
-  }, [city?.id, dispatch, mode, setCity, fx]);
+  }, [city?.id, dispatch, mode, setCity]);
 
   const run = (cmd: GameCommand) => {
     if (mode === "cloud") {
@@ -338,9 +343,9 @@ export function GameShell({
           type="button"
           className="tool-btn"
           title="Mute"
-          onClick={() => fx.setMuted(!fx.muted)}
+          onClick={() => fx.setMuted(!muted)}
         >
-          {fx.muted ? <VolumeX size={16} /> : <Volume2 size={16} />}
+          {muted ? <VolumeX size={16} /> : <Volume2 size={16} />}
         </button>
         <button
           type="button"
@@ -352,11 +357,11 @@ export function GameShell({
               "day",
               "night",
             ];
-            const i = order.indexOf(fx.dayMode);
+            const i = order.indexOf(dayMode);
             fx.setDayMode(order[(i + 1) % order.length]!);
           }}
         >
-          {fx.dayMode === "night" ? <Moon size={16} /> : <Sun size={16} />}
+          {dayMode === "night" ? <Moon size={16} /> : <Sun size={16} />}
         </button>
         {cloudUser ? (
           <form action="/auth/signout" method="post">
@@ -427,8 +432,8 @@ export function GameShell({
             selectedBuildingId={selectedBuildingId}
             selectedCitizenId={selectedCitizenId}
             buildMode={buildMode}
-            constructingId={fx.constructingId}
-            celebratingMaxId={fx.celebratingMaxId}
+            constructingId={constructingId}
+            celebratingMaxId={celebratingMaxId}
             night={night}
             parkPromoActive={!!(city.parkPromoUntil && city.parkPromoUntil > city.tickAt)}
             plots={RIVERSIDE_PLOTS}

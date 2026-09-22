@@ -7,28 +7,38 @@ const STORAGE_KEY = "riverside_city_v2";
 const LEGACY_KEY = "riverside_city_v1";
 
 function migrate(raw: CityState): CityState {
-  const base = createInitialCity(raw.name === "Untitled" ? "Untitled" : raw.name, raw.seed);
-  return {
-    ...base,
-    ...raw,
-    attention: raw.attention ?? 10,
-    lastIncomePulseAt: raw.lastIncomePulseAt ?? raw.tickAt ?? Date.now(),
-    arrivalNote: raw.arrivalNote ?? null,
-    lastEventOutcome: raw.lastEventOutcome ?? null,
-    posts: (raw.posts ?? []).map((p) => ({
-      ...p,
-      authorName: p.authorName ?? p.handle?.replace("@", "") ?? "Citizen",
-      likes: p.likes ?? 10,
-      comments: p.comments ?? 1,
-    })),
-    events: (raw.events ?? []).map((e) => ({
-      ...e,
-      urgency: e.urgency ?? "medium",
-    })),
-    unlocked: raw.unlocked?.length
-      ? raw.unlocked
-      : base.unlocked,
-  };
+  try {
+    const base = createInitialCity(
+      raw.name === "Untitled" ? "Untitled" : raw.name || "Untitled",
+      raw.seed ?? Date.now() % 1_000_000
+    );
+    return {
+      ...base,
+      ...raw,
+      name: raw.name || base.name,
+      attention: raw.attention ?? 10,
+      lastIncomePulseAt: raw.lastIncomePulseAt ?? raw.tickAt ?? Date.now(),
+      arrivalNote: raw.arrivalNote ?? null,
+      lastEventOutcome: raw.lastEventOutcome ?? null,
+      buildings: raw.buildings ?? [],
+      citizens: raw.citizens ?? [],
+      jobs: raw.jobs ?? [],
+      posts: (raw.posts ?? []).map((p) => ({
+        ...p,
+        authorName: p.authorName ?? p.handle?.replace("@", "") ?? "Citizen",
+        likes: p.likes ?? 10,
+        comments: p.comments ?? 1,
+      })),
+      events: (raw.events ?? []).map((e) => ({
+        ...e,
+        urgency: e.urgency ?? "medium",
+      })),
+      unlocked: raw.unlocked?.length ? raw.unlocked : base.unlocked,
+      goals: raw.goals?.length ? raw.goals : base.goals,
+    };
+  } catch {
+    return createInitialCity();
+  }
 }
 
 function loadLocal(): CityState | null {
